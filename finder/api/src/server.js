@@ -1,15 +1,14 @@
 import "dotenv/config";
-
 import { readFileSync } from "node:fs";
-
+import express from "express";
 import path from "node:path";
 
-import express from "express";
+const app = express();
+app.use(express.json());
 
 const hotels = JSON.parse(
   readFileSync(
     path.join(import.meta.dirname, "..", "finder-data", "hotels.json"),
-
     "utf8",
   ),
 );
@@ -17,42 +16,30 @@ const hotels = JSON.parse(
 const chambres = JSON.parse(
   readFileSync(
     path.join(import.meta.dirname, "..", "finder-data", "chambres.json"),
-
     "utf8",
   ),
 );
 
-const app = express();
-
-app.use(express.json());
-
-app.get("/health", (req, res) => res.json({ ok: true }));
-
 app.get("/hotels", (req, res) => res.json(hotels));
-
-app.get("/chambres", (req, res) => res.json(chambres));
 
 app.get("/hotels/:id", (req, res) => {
   const id = Number(req.params.id);
-
-  // 'hotel' au singulier pour ne pas masquer la constante globale 'hotels'
-
   const hotel = hotels.find((h) => h.id === id);
-
-  if (!hotel) return res.status(404).json({ erreur: "Hôtel introuvable" });
-
+  if (!hotel) return res.status(404).json({ erreur: "Hotel introuvable" });
   res.json(hotel);
+});
+
+app.get("/chambres", (req, res) => {
+  const prixMax = Number(req.query.prix_max);
+  if (!prixMax) return res.status(404).json({ erreur: "Valeur invalide" });
+  const chambre = chambres.filter((c) => c.prix_nuit <= prixMax);
+  res.json(chambre);
 });
 
 app.get("/chambres/:id", (req, res) => {
   const id = Number(req.params.id);
-
-  // 'chambre' au singulier pour ne pas masquer la constante globale 'chambres'
-
   const chambre = chambres.find((c) => c.id === id);
-
-  if (!chambre) return res.status(404).json({ erreur: "Chambre introuvable" });
-
+  if (!chambre) return res.status(404).json({ erreur: "Hotel introuvable" });
   res.json(chambre);
 });
 
