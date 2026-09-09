@@ -23,34 +23,47 @@ app.use(express.json());
 app.get("/health", (req, res) => res.json({ ok: true }));
 
 app.get("/hotels", (req, res) => res.json(hotels));
-app.get("/chambres", (req, res) => res.json(chambres));
-
-app.get("/hotels/:id", (req, res) => {
-  const id = Number(req.params.id);
-
-  const hotel = hotels.find((h) => h.id === id);
-  if (!hotel) return res.status(404).json({ erreur: "Hôtel introuvable" });
-
-  res.json(hotel);
-});
 
 app.get("/chambres", (req, res) => {
   const { prix_max } = req.query;
 
+  // Sans critère, on renvoie toutes les chambres (32)
   if (prix_max === undefined) {
     return res.json(chambres);
   }
 
   const prixMaxNum = Number(prix_max);
 
+  // Si le critère n'est pas un nombre valide, renvoie 400
   if (Number.isNaN(prixMaxNum)) {
     return res
       .status(400)
       .json({ erreur: "Le critère prix_max doit être un nombre valide" });
   }
 
+  // Filtrage des chambres <= prix_max
   const resultat = chambres.filter((c) => c.prix_nuit <= prixMaxNum);
   res.json(resultat);
+});
+
+app.get("/hotels/:id", (req, res) => {
+  const id = Number(req.params.id);
+
+  // 'hotel' au singulier pour ne pas masquer la constante globale 'hotels'
+  const hotel = hotels.find((h) => h.id === id);
+  if (!hotel) return res.status(404).json({ erreur: "Hôtel introuvable" });
+
+  res.json(hotel);
+});
+
+app.get("/chambres/:id", (req, res) => {
+  const id = Number(req.params.id);
+
+  // 'chambre' au singulier pour ne pas masquer la constante globale 'chambres'
+  const chambre = chambres.find((c) => c.id === id);
+  if (!chambre) return res.status(404).json({ erreur: "Chambre introuvable" });
+
+  res.json(chambre);
 });
 
 app.listen(process.env.PORT ?? 3000);
