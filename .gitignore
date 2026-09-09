@@ -1,0 +1,3 @@
+# .gitignore (à la racine du dépôt)
+node_modules/
+.env
