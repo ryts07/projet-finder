@@ -1,0 +1,81 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+model Hotel {
+  id          Int     @id @default(autoincrement())
+  nom         String
+  etoiles     Int
+  adresse     String
+  codePostal  String  @map("code_postal")
+  ville       String
+  telephone   String
+  email       String
+  gerant      String
+  description String
+
+  chambres Chambre[]
+  comptes  Compte[] // les hôteliers rattachés à cet hôtel
+
+  @@map("hotels")
+}
+
+model Chambre {
+  id          Int     @id @default(autoincrement())
+  hotelId     Int     @map("hotel_id")
+  numero      String
+  categorie   String
+  capacite    Int
+  prixNuit    Int     @map("prix_nuit")
+  description String
+  disponible  Boolean
+
+  hotel        Hotel         @relation(fields: [hotelId], references: [id])
+  reservations Reservation[]
+
+  @@map("chambres")
+}
+
+model Compte {
+  id          Int     @id @default(autoincrement())
+  role        String
+  email       String  @unique
+  motDePasse  String  @map("mot_de_passe")
+  nom         String
+  prenom      String
+  telephone   String? // voyageur ; absent pour hôteliers et l'admin
+  hotelId     Int?    @map("hotel_id") // hôtelier uniquement : l'hôtel qu'il gère
+
+  hotel        Hotel?        @relation(fields: [hotelId], references: [id])
+  reservations Reservation[] // les réservations faites par ce compte (voyageur)
+
+  @@map("comptes")
+}
+
+model Reservation {
+  id              Int      @id @default(autoincrement())
+  chambreId       Int      @map("chambre_id")
+  voyageurId      Int      @map("voyageur_id")
+  dateArrivee     DateTime @map("date_arrivee")
+  dateDepart      DateTime @map("date_depart")
+  nbPersonnes     Int      @map("nb_personnes")
+  statut          String
+  demandeSpeciale String?  @map("demande_speciale")
+
+  chambre  Chambre @relation(fields: [chambreId], references: [id])
+  voyageur Compte  @relation(fields: [voyageurId], references: [id])
+
+  @@map("reservations")
+}
