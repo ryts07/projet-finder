@@ -37,11 +37,21 @@ app.get("/hotels/:id/chambres", async (req, res) => {
 });
 
 app.get("/chambres", async (req, res) => {
-  const prixMax = Number(req.query.prix_max);
-  if (!prixMax) return res.status(404).json({ erreur: "Valeur invalide" });
-  const chambres = await prisma.chambre.findMany({
-    where: { prixNuit: { lte: prixMax } },
-  });
+  const { categorie, hotel, capacite, prix_max } = req.query;
+  const filtre = {};
+  if (categorie) {
+    filtre.categorie = categorie;
+  }
+  if (hotel) {
+    filtre.hotelId = Number(hotel);
+  }
+  if (capacite) {
+    filtre.capacite = { gte: Number(capacite) };
+  }
+  if (prix_max) {
+    filtre.prixNuit = { lte: Number(prix_max) };
+  }
+  const chambres = await prisma.chambre.findMany({ where: filtre });
   res.json(chambres);
 });
 
