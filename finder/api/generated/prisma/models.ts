@@ -8,5 +8,8 @@
  *
  * 🟢 You can import this file directly.
  */
-export type * from './models/Livre.ts'
+export type * from './models/Hotel.ts'
+export type * from './models/Chambre.ts'
+export type * from './models/Compte.ts'
+export type * from './models/Reservation.ts'
 export type * from './commonInputTypes.ts'

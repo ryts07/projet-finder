@@ -29,8 +29,8 @@ export * from "./enums.ts"
  * @example
  * ```
  * const prisma = new PrismaClient()
- * // Fetch zero or more Livres
- * const livres = await prisma.livre.findMany()
+ * // Fetch zero or more Hotels
+ * const hotels = await prisma.hotel.findMany()
  * ```
  * 
  * Read more in our [docs](https://www.prisma.io/docs/reference/tools-and-interfaces/prisma-client).
@@ -45,7 +45,22 @@ path.join(__dirname, "query_engine-windows.dll.node")
 path.join(process.cwd(), "generated/prisma/query_engine-windows.dll.node")
 
 /**
- * Model Livre
+ * Model Hotel
  * 
  */
-export type Livre = Prisma.LivreModel
+export type Hotel = Prisma.HotelModel
+/**
+ * Model Chambre
+ * 
+ */
+export type Chambre = Prisma.ChambreModel
+/**
+ * Model Compte
+ * 
+ */
+export type Compte = Prisma.CompteModel
+/**
+ * Model Reservation
+ * 
+ */
+export type Reservation = Prisma.ReservationModel

@@ -49,7 +49,10 @@ export const AnyNull = runtime.objectEnumValues.instances.AnyNull
 
 
 export const ModelName = {
-  Livre: 'Livre'
+  Hotel: 'Hotel',
+  Chambre: 'Chambre',
+  Compte: 'Compte',
+  Reservation: 'Reservation'
 } as const
 
 export type ModelName = (typeof ModelName)[keyof typeof ModelName]
@@ -68,12 +71,62 @@ export const TransactionIsolationLevel = runtime.makeStrictEnum({
 export type TransactionIsolationLevel = (typeof TransactionIsolationLevel)[keyof typeof TransactionIsolationLevel]
 
 
-export const LivreScalarFieldEnum = {
+export const HotelScalarFieldEnum = {
   id: 'id',
-  titre: 'titre'
+  nom: 'nom',
+  etoiles: 'etoiles',
+  adresse: 'adresse',
+  codePostal: 'codePostal',
+  ville: 'ville',
+  telephone: 'telephone',
+  email: 'email',
+  gerant: 'gerant',
+  description: 'description'
 } as const
 
-export type LivreScalarFieldEnum = (typeof LivreScalarFieldEnum)[keyof typeof LivreScalarFieldEnum]
+export type HotelScalarFieldEnum = (typeof HotelScalarFieldEnum)[keyof typeof HotelScalarFieldEnum]
+
+
+export const ChambreScalarFieldEnum = {
+  id: 'id',
+  hotelId: 'hotelId',
+  numero: 'numero',
+  categorie: 'categorie',
+  capacite: 'capacite',
+  prixNuit: 'prixNuit',
+  description: 'description',
+  disponible: 'disponible'
+} as const
+
+export type ChambreScalarFieldEnum = (typeof ChambreScalarFieldEnum)[keyof typeof ChambreScalarFieldEnum]
+
+
+export const CompteScalarFieldEnum = {
+  id: 'id',
+  role: 'role',
+  email: 'email',
+  motDePasse: 'motDePasse',
+  nom: 'nom',
+  prenom: 'prenom',
+  telephone: 'telephone',
+  hotelId: 'hotelId'
+} as const
+
+export type CompteScalarFieldEnum = (typeof CompteScalarFieldEnum)[keyof typeof CompteScalarFieldEnum]
+
+
+export const ReservationScalarFieldEnum = {
+  id: 'id',
+  chambreId: 'chambreId',
+  voyageurId: 'voyageurId',
+  dateArrivee: 'dateArrivee',
+  dateDepart: 'dateDepart',
+  nbPersonnes: 'nbPersonnes',
+  statut: 'statut',
+  demandeSpeciale: 'demandeSpeciale'
+} as const
+
+export type ReservationScalarFieldEnum = (typeof ReservationScalarFieldEnum)[keyof typeof ReservationScalarFieldEnum]
 
 
 export const SortOrder = {
@@ -84,9 +137,53 @@ export const SortOrder = {
 export type SortOrder = (typeof SortOrder)[keyof typeof SortOrder]
 
 
-export const LivreOrderByRelevanceFieldEnum = {
-  titre: 'titre'
+export const HotelOrderByRelevanceFieldEnum = {
+  nom: 'nom',
+  adresse: 'adresse',
+  codePostal: 'codePostal',
+  ville: 'ville',
+  telephone: 'telephone',
+  email: 'email',
+  gerant: 'gerant',
+  description: 'description'
 } as const
 
-export type LivreOrderByRelevanceFieldEnum = (typeof LivreOrderByRelevanceFieldEnum)[keyof typeof LivreOrderByRelevanceFieldEnum]
+export type HotelOrderByRelevanceFieldEnum = (typeof HotelOrderByRelevanceFieldEnum)[keyof typeof HotelOrderByRelevanceFieldEnum]
+
+
+export const ChambreOrderByRelevanceFieldEnum = {
+  numero: 'numero',
+  categorie: 'categorie',
+  description: 'description'
+} as const
+
+export type ChambreOrderByRelevanceFieldEnum = (typeof ChambreOrderByRelevanceFieldEnum)[keyof typeof ChambreOrderByRelevanceFieldEnum]
+
+
+export const NullsOrder = {
+  first: 'first',
+  last: 'last'
+} as const
+
+export type NullsOrder = (typeof NullsOrder)[keyof typeof NullsOrder]
+
+
+export const CompteOrderByRelevanceFieldEnum = {
+  role: 'role',
+  email: 'email',
+  motDePasse: 'motDePasse',
+  nom: 'nom',
+  prenom: 'prenom',
+  telephone: 'telephone'
+} as const
+
+export type CompteOrderByRelevanceFieldEnum = (typeof CompteOrderByRelevanceFieldEnum)[keyof typeof CompteOrderByRelevanceFieldEnum]
+
+
+export const ReservationOrderByRelevanceFieldEnum = {
+  statut: 'statut',
+  demandeSpeciale: 'demandeSpeciale'
+} as const
+
+export type ReservationOrderByRelevanceFieldEnum = (typeof ReservationOrderByRelevanceFieldEnum)[keyof typeof ReservationOrderByRelevanceFieldEnum]
 

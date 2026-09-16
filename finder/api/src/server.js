@@ -1,44 +1,53 @@
 import "dotenv/config";
-import { readFileSync } from "node:fs";
 import express from "express";
-import path from "node:path";
+import { PrismaClient } from "@prisma/client";
 
 const app = express();
 app.use(express.json());
 
-const hotels = JSON.parse(
-  readFileSync(
-    path.join(import.meta.dirname, "..", "finder-data", "hotels.json"),
-    "utf8",
-  ),
-);
+const prisma = new PrismaClient();
 
-const chambres = JSON.parse(
-  readFileSync(
-    path.join(import.meta.dirname, "..", "finder-data", "chambres.json"),
-    "utf8",
-  ),
-);
+app.get("/hotels", async (req, res) => {
+  const hotels = await prisma.hotel.findMany();
+  res.json(hotels);
+});
 
-app.get("/hotels", (req, res) => res.json(hotels));
-
-app.get("/hotels/:id", (req, res) => {
+app.get("/hotels/:id", async (req, res) => {
   const id = Number(req.params.id);
-  const hotel = hotels.find((h) => h.id === id);
+  const hotel = await prisma.hotel.findUnique({ where: { id } });
   if (!hotel) return res.status(404).json({ erreur: "Hotel introuvable" });
   res.json(hotel);
 });
 
-app.get("/chambres", (req, res) => {
-  const prixMax = Number(req.query.prix_max);
-  if (!prixMax) return res.status(404).json({ erreur: "Valeur invalide" });
-  const chambre = chambres.filter((c) => c.prix_nuit <= prixMax);
-  res.json(chambre);
+app.get("/hotels/:id/chambres", async (req, res) => {
+  const id = Number(req.params.id);
+  if (isNaN(id)) {
+    return res.status(404).json({ erreur: "Hôtel introuvable" });
+  }
+  const hotel = await prisma.hotel.findUnique({
+    where: { id },
+  });
+  if (!hotel) {
+    return res.status(404).json({ erreur: "Hôtel introuvable" });
+  }
+  const chambres = await prisma.chambre.findMany({
+    where: { hotelId: id },
+  });
+  res.json(chambres);
 });
 
-app.get("/chambres/:id", (req, res) => {
+app.get("/chambres", async (req, res) => {
+  const prixMax = Number(req.query.prix_max);
+  if (!prixMax) return res.status(404).json({ erreur: "Valeur invalide" });
+  const chambres = await prisma.chambre.findMany({
+    where: { prixNuit: { lte: prixMax } },
+  });
+  res.json(chambres);
+});
+
+app.get("/chambres/:id", async (req, res) => {
   const id = Number(req.params.id);
-  const chambre = chambres.find((c) => c.id === id);
+  const chambre = await prisma.chambre.findUnique({ where: { id } });
   if (!chambre) return res.status(404).json({ erreur: "Hotel introuvable" });
   res.json(chambre);
 });
