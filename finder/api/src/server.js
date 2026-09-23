@@ -5,12 +5,14 @@ import path from "node:path";
 import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
 import { PrismaClient } from "@prisma/client";
+import cookieParser from "cookie-parser";
 
 const app = express();
 const PORT = process.env.PORT ?? 3000;
 const prisma = new PrismaClient();
 
 app.use(express.json());
+app.use(cookieParser());
 
 function authRequis(req, res, next) {
   const entete = req.headers.authorization || "";
@@ -191,24 +193,65 @@ app.post("/auth/register", async (req, res) => {
 
 app.post("/auth/login", async (req, res) => {
   const { email, motDePasse } = req.body;
-
   const compte = await prisma.compte.findUnique({ where: { email } });
 
   if (!compte || !(await bcrypt.compare(motDePasse, compte.motDePasse))) {
     return res.status(401).json({ erreur: "identifiants invalides" });
   }
 
-  const token = jwt.sign(
-    { userId: compte.id, role: compte.role, hotelId: compte.hotelId },
-    process.env.JWT_SECRET,
-    { expiresIn: "24h" },
-  );
+  const payload = {
+    userId: compte.id,
+    role: compte.role,
+    hotelId: compte.hotelId,
+  };
+
+  // 1. Jeton d'accès court (ex: 15 min ou 24h)
+  const token = jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: "24h" });
+
+  // 2. Jeton de rafraîchissement long (ex: 7 jours)
+  const refreshToken = jwt.sign(payload, process.env.JWT_REFRESH_SECRET, {
+    expiresIn: "7d",
+  });
+
+  // 3. Dépôt du cookie HTTP-Only
+  res.cookie("refresh", refreshToken, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "strict",
+  });
 
   res.json({ token });
 });
 
 app.post("/auth/logout", authRequis, (req, res) => {
   res.status(204).end();
+});
+
+app.post("/auth/refresh", (req, res) => {
+  const refreshToken = req.cookies?.refresh;
+
+  if (!refreshToken) {
+    return res
+      .status(401)
+      .json({ erreur: "cookie de rafraîchissement absent" });
+  }
+
+  try {
+    // Vérification STRICTE avec JWT_REFRESH_SECRET
+    const payload = jwt.verify(refreshToken, process.env.JWT_REFRESH_SECRET);
+
+    const token = jwt.sign(
+      { userId: payload.userId, role: payload.role, hotelId: payload.hotelId },
+      process.env.JWT_SECRET,
+      { expiresIn: "24h" },
+    );
+
+    res.json({ token });
+  } catch {
+    return res
+      .status(401)
+      .json({ erreur: "jeton de rafraîchissement invalide ou expiré" });
+  }
 });
 
 app.get(
