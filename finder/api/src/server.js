@@ -1,278 +1,180 @@
-import "dotenv/config";
+import dotenv from "dotenv";
 import express from "express";
-import { fileURLToPath } from "node:url";
 import path from "node:path";
+import { PrismaClient } from "@prisma/client";
 import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
-import { PrismaClient } from "@prisma/client";
-import cookieParser from "cookie-parser";
+import {
+  SchemaConnexionUtilisateur,
+  SchemaCreationChambre,
+  SchemaInscriptionUtilisateur,
+  SchemaModificationChambre,
+  SchemaModificationVoyageur,
+  SchemaRechercheChambre,
+  SchemaCreationReservation,
+  SchemaChangementStatutReservation,
+} from "./schemas.js";
+
+dotenv.config({ path: path.join(import.meta.dirname, "..", ".env") });
 
 const app = express();
-const PORT = process.env.PORT ?? 3000;
 const prisma = new PrismaClient();
-
 app.use(express.json());
-app.use(cookieParser());
 
-function authRequis(req, res, next) {
-  const entete = req.headers.authorization || "";
-  const token = entete.replace("Bearer ", "");
+const JWT_SECRET = process.env.JWT_SECRET;
+
+const comptePublic = ({ motDePasse, ...compte }) => compte;
+
+const validerCorps = (schema) => (req, res, next) => {
+  const resultat = schema.safeParse(req.body);
+  if (!resultat.success) {
+    return res.status(400).json({
+      erreur: "Corps de requete invalide",
+      erreurs: resultat.error.issues,
+    });
+  }
+  req.body = resultat.data;
+  next();
+};
+
+const validerQuery = (schema) => (req, res, next) => {
+  const resultat = schema.safeParse(req.query);
+  if (!resultat.success) {
+    return res.status(400).json({
+      erreur: "Parametres de recherche invalides",
+      erreurs: resultat.error.issues,
+    });
+  }
+  req.criteres = resultat.data;
+  next();
+};
+
+const authRequis = (req, res, next) => {
+  const authorization = req.headers.authorization;
+  const [type, token] = authorization?.split(" ") ?? [];
+
+  if (type !== "Bearer" || !token || !JWT_SECRET) {
+    return res.status(401).json({ erreur: "Authentification requise" });
+  }
 
   try {
-    const payload = jwt.verify(token, process.env.JWT_SECRET);
-    req.user = payload; // contient { userId, role, hotelId }
+    const payload = jwt.verify(token, JWT_SECRET);
+    req.user = {
+      userId: Number(payload.userId ?? payload.sub),
+      hotelId: payload.hotelId ?? null,
+      role: payload.role,
+    };
     next();
   } catch {
-    return res.status(401).json({ erreur: "jeton absent ou invalide" });
+    res.status(401).json({ erreur: "Jeton invalide ou expire" });
   }
-}
+};
 
-function exigeRole(...roles) {
-  return (req, res, next) => {
-    if (!req.user || !roles.includes(req.user.role)) {
-      return res.status(403).json({ erreur: "accès refusé" });
+const exigeRole =
+  (...roles) =>
+  (req, res, next) => {
+    if (!req.user?.userId || !roles.includes(req.user.role)) {
+      return res.status(403).json({ erreur: "Role non autorise" });
     }
     next();
   };
+
+app.get("/health", (req, res) => res.json({ ok: true }));
+
+const TRANSITIONS_AUTORISEES = {
+  en_attente: ["confirmee", "refusee"],
+  confirmee: [],
+  refusee: [],
+  annulee: [],
+};
+
+function transitionValide(statutActuel, statutVoulu) {
+  return (TRANSITIONS_AUTORISEES[statutActuel] || []).includes(statutVoulu);
 }
 
-app.get("/health", (req, res) => {
-  res.json({ statut: "ok" });
-});
+// ---------- Auth ----------
 
-app.get("/hotels", async (req, res) => {
-  const hotels = await prisma.hotel.findMany();
-  res.json(hotels);
-});
+app.post(
+  "/auth/register",
+  validerCorps(SchemaInscriptionUtilisateur),
+  async (req, res, next) => {
+    const { email, motDePasse, nom, prenom, telephone } = req.body;
 
-app.get("/hotels/:id/chambres", async (req, res) => {
-  const id = Number(req.params.id);
-
-  if (!Number.isInteger(id)) {
-    return res.status(404).json({ erreur: "Hôtel introuvable" });
-  }
-
-  const hotel = await prisma.hotel.findUnique({ where: { id } });
-
-  if (!hotel) {
-    return res.status(404).json({ erreur: "Hôtel introuvable" });
-  }
-
-  const chambres = await prisma.chambre.findMany({
-    where: { hotelId: id },
-  });
-
-  res.json(chambres);
-});
-
-app.get("/hotels/:id", async (req, res) => {
-  const id = Number(req.params.id);
-  if (!Number.isInteger(id)) {
-    return res
-      .status(400)
-      .json({ erreur: "L'identifiant doit être un entier" });
-  }
-
-  const hotel = await prisma.hotel.findUnique({ where: { id } });
-
-  if (!hotel) {
-    return res.status(404).json({ erreur: "Hôtel introuvable" });
-  }
-
-  res.json(hotel);
-});
-
-app.get("/chambres/:id", async (req, res) => {
-  const id = Number(req.params.id);
-  if (!Number.isInteger(id)) {
-    return res
-      .status(400)
-      .json({ erreur: "L'identifiant doit être un entier" });
-  }
-
-  const chambre = await prisma.chambre.findUnique({ where: { id } });
-
-  if (!chambre) {
-    return res.status(404).json({ erreur: "Chambre introuvable" });
-  }
-
-  res.json(chambre);
-});
-
-app.get("/chambres", async (req, res) => {
-  const { hotel, prixmax, categorie, capacite, date_debut, date_fin } =
-    req.query;
-
-  const filtre = {};
-
-  if (hotel) {
-    if (!Number.isNaN(Number(hotel))) {
-      filtre.hotelId = Number(hotel);
-    } else {
-      filtre.hotel = { nom: { contains: String(hotel) } };
-    }
-  }
-  if (prixmax)
-    filtre.prixNuit = {
-      lte: Number(prixmax),
-    };
-  if (categorie)
-    filtre.categorie = {
-      contains: String(categorie),
-    };
-  if (capacite)
-    filtre.capacite = {
-      equals: Number(capacite),
-    };
-
-  if (date_debut && date_fin) {
-    const debut = new Date(String(date_debut));
-    const fin = new Date(String(date_fin));
-
-    if (Number.isNaN(debut.getTime()) || Number.isNaN(fin.getTime())) {
-      return res.status(400).json({ erreur: "Dates invalides" });
-    }
-
-    if (debut >= fin) {
-      return res.status(400).json({
-        erreur: "date_debut doit être strictement avant date_fin",
+    try {
+      const compteExistant = await prisma.compte.findUnique({
+        where: { email },
       });
+      if (compteExistant) {
+        return res.status(409).json({ erreur: "Email deja utilise" });
+      }
+
+      const compte = await prisma.compte.create({
+        data: {
+          email,
+          motDePasse: await bcrypt.hash(motDePasse, 12),
+          role: "voyageur",
+          nom,
+          prenom,
+          telephone: telephone ?? null,
+        },
+      });
+      res.status(201).json(comptePublic(compte));
+    } catch (error) {
+      next(error);
     }
+  },
+);
 
-    filtre.reservations = {
-      none: {
-        statut: "confirmee",
-        dateArrivee: { lt: fin },
-        dateDepart: { gt: debut },
-      },
-    };
-  }
+app.post(
+  "/auth/login",
+  validerCorps(SchemaConnexionUtilisateur),
+  async (req, res, next) => {
+    const { email, motDePasse } = req.body;
 
-  const chambres = await prisma.chambre.findMany({
-    where: filtre,
-    include: {
-      hotel: true,
-    },
-  });
+    try {
+      const compte = await prisma.compte.findUnique({ where: { email } });
+      const motDePasseValide = compte
+        ? await bcrypt.compare(motDePasse, compte.motDePasse)
+        : false;
 
-  res.json(chambres);
-});
+      if (!compte || !motDePasseValide) {
+        return res
+          .status(401)
+          .json({ erreur: "Email ou mot de passe incorrect" });
+      }
 
-app.post("/auth/register", async (req, res) => {
-  const { email, motDePasse, nom, prenom, telephone } = req.body;
+      const token = jwt.sign(
+        { userId: compte.id, hotelId: compte.hotelId, role: compte.role },
+        JWT_SECRET,
+        { subject: String(compte.id), expiresIn: "24h" },
+      );
+      res.json({ token, compte: comptePublic(compte) });
+    } catch (error) {
+      next(error);
+    }
+  },
+);
 
-  if (!email || !motDePasse || !nom || !prenom) {
-    return res
-      .status(400)
-      .json({ erreur: "email, motDePasse, nom et prenom sont requis" });
-  }
+app.post("/auth/logout", authRequis, (req, res) => res.status(204).end());
 
-  const motDePasseHache = await bcrypt.hash(motDePasse, 10);
-
-  const compte = await prisma.compte.create({
-    data: {
-      email,
-      motDePasse: motDePasseHache,
-      nom,
-      prenom,
-      telephone: telephone ?? null,
-      role: "voyageur",
-    },
-    select: {
-      id: true,
-      email: true,
-      nom: true,
-      prenom: true,
-      telephone: true,
-      role: true,
-    },
-  });
-
-  res.status(201).json(compte);
-});
-
-app.post("/auth/login", async (req, res) => {
-  const { email, motDePasse } = req.body;
-  const compte = await prisma.compte.findUnique({ where: { email } });
-
-  if (!compte || !(await bcrypt.compare(motDePasse, compte.motDePasse))) {
-    return res.status(401).json({ erreur: "identifiants invalides" });
-  }
-
-  const payload = {
-    userId: compte.id,
-    role: compte.role,
-    hotelId: compte.hotelId,
-  };
-
-  // 1. Jeton d'accès court (ex: 15 min ou 24h)
-  const token = jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: "24h" });
-
-  // 2. Jeton de rafraîchissement long (ex: 7 jours)
-  const refreshToken = jwt.sign(payload, process.env.JWT_REFRESH_SECRET, {
-    expiresIn: "7d",
-  });
-
-  // 3. Dépôt du cookie HTTP-Only
-  res.cookie("refresh", refreshToken, {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "strict",
-  });
-
-  res.json({ token });
-});
-
-app.post("/auth/logout", authRequis, (req, res) => {
-  res.status(204).end();
-});
-
-app.post("/auth/refresh", (req, res) => {
-  const refreshToken = req.cookies?.refresh;
-
-  if (!refreshToken) {
-    return res
-      .status(401)
-      .json({ erreur: "cookie de rafraîchissement absent" });
-  }
-
-  try {
-    // Vérification STRICTE avec JWT_REFRESH_SECRET
-    const payload = jwt.verify(refreshToken, process.env.JWT_REFRESH_SECRET);
-
-    const token = jwt.sign(
-      { userId: payload.userId, role: payload.role, hotelId: payload.hotelId },
-      process.env.JWT_SECRET,
-      { expiresIn: "24h" },
-    );
-
-    res.json({ token });
-  } catch {
-    return res
-      .status(401)
-      .json({ erreur: "jeton de rafraîchissement invalide ou expiré" });
-  }
-});
+// ---------- Profil voyageur ----------
 
 app.get(
   "/voyageurs/me",
   authRequis,
   exigeRole("voyageur"),
-  async (req, res) => {
-    const moi = await prisma.compte.findUnique({
-      where: { id: req.user.userId },
-      select: {
-        nom: true,
-        prenom: true,
-        telephone: true,
-      },
-    });
-
-    if (!moi) {
-      return res.status(404).json({ erreur: "Voyageur introuvable" });
+  async (req, res, next) => {
+    try {
+      const compte = await prisma.compte.findUnique({
+        where: { id: req.user.userId },
+        select: { nom: true, prenom: true, telephone: true },
+      });
+      if (!compte)
+        return res.status(404).json({ erreur: "Voyageur introuvable" });
+      res.json(compte);
+    } catch (error) {
+      next(error);
     }
-
-    res.json(moi);
   },
 );
 
@@ -280,59 +182,143 @@ app.patch(
   "/voyageurs/me",
   authRequis,
   exigeRole("voyageur"),
-  async (req, res) => {
-    const { telephone } = req.body;
-
-    const moi = await prisma.compte.update({
-      where: { id: req.user.userId },
-      data: { telephone: telephone ?? null },
-      select: {
-        nom: true,
-        prenom: true,
-        telephone: true,
-      },
-    });
-
-    res.json(moi);
+  validerCorps(SchemaModificationVoyageur),
+  async (req, res, next) => {
+    try {
+      const compte = await prisma.compte.update({
+        where: { id: req.user.userId },
+        data: req.body,
+        select: { nom: true, prenom: true, telephone: true },
+      });
+      res.json(compte);
+    } catch (error) {
+      next(error);
+    }
   },
 );
 
-app.post("/chambres", authRequis, exigeRole("hotelier"), async (req, res) => {
-  const chambre = await prisma.chambre.create({
-    data: {
-      ...req.body,
-      hotelId: req.user.hotelId,
-    },
-  });
+// ---------- Hôtels et chambres : lectures publiques ----------
 
-  res.status(201).json(chambre);
+app.get("/hotels", async (req, res, next) => {
+  try {
+    res.json(await prisma.hotel.findMany());
+  } catch (error) {
+    next(error);
+  }
 });
+
+app.get("/hotels/:id", async (req, res, next) => {
+  const id = Number(req.params.id);
+  try {
+    const hotel = await prisma.hotel.findUnique({ where: { id } });
+    if (!hotel) return res.status(404).json({ erreur: "Hotel introuvable" });
+    res.json(hotel);
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.get("/hotels/:id/chambres", async (req, res, next) => {
+  const hotelId = Number(req.params.id);
+  if (!Number.isInteger(hotelId)) {
+    return res.status(404).json({ erreur: "Hotel introuvable" });
+  }
+  try {
+    const hotel = await prisma.hotel.findUnique({ where: { id: hotelId } });
+    if (!hotel) return res.status(404).json({ erreur: "Hotel introuvable" });
+
+    const chambres = await prisma.chambre.findMany({ where: { hotelId } });
+    res.json(chambres);
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.get("/chambres/:id", async (req, res, next) => {
+  const id = Number(req.params.id);
+  try {
+    const chambre = await prisma.chambre.findUnique({ where: { id } });
+    if (!chambre)
+      return res.status(404).json({ erreur: "chambre introuvable" });
+    res.json(chambre);
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.get(
+  "/chambres",
+  validerQuery(SchemaRechercheChambre),
+  async (req, res, next) => {
+    const { hotel, prix_max, capacite, categorie, date_debut, date_fin } =
+      req.criteres;
+    const filtre = {};
+
+    if (hotel !== undefined) filtre.hotelId = hotel;
+    if (prix_max !== undefined) filtre.prixNuit = { lte: prix_max };
+    if (capacite !== undefined) filtre.capacite = { equals: capacite };
+    if (categorie) filtre.categorie = categorie;
+
+    try {
+      if (date_debut && date_fin) {
+        const debut = new Date(date_debut);
+        const fin = new Date(date_fin);
+        const reservations = await prisma.reservation.findMany({
+          where: {
+            statut: "confirmee",
+            dateArrivee: { lt: fin },
+            dateDepart: { gt: debut },
+          },
+          select: { chambreId: true },
+        });
+        filtre.id = { notIn: reservations.map((r) => r.chambreId) };
+      }
+
+      const chambres = await prisma.chambre.findMany({ where: filtre });
+      res.json(chambres);
+    } catch (error) {
+      next(error);
+    }
+  },
+);
+
+// ---------- Chambres : écritures protégées ----------
+
+app.post(
+  "/chambres",
+  authRequis,
+  exigeRole("hotelier"),
+  validerCorps(SchemaCreationChambre),
+  async (req, res, next) => {
+    try {
+      const chambre = await prisma.chambre.create({
+        data: { ...req.body, hotelId: req.user.hotelId },
+      });
+      res.status(201).json(chambre);
+    } catch (error) {
+      next(error);
+    }
+  },
+);
 
 app.patch(
   "/chambres/:id",
   authRequis,
   exigeRole("hotelier"),
-  async (req, res) => {
+  validerCorps(SchemaModificationChambre),
+  async (req, res, next) => {
     const id = Number(req.params.id);
-
-    if (!Number.isInteger(id)) {
-      return res
-        .status(400)
-        .json({ erreur: "L'identifiant doit être un entier" });
+    try {
+      const chambre = await prisma.chambre.findUnique({ where: { id } });
+      if (!chambre)
+        return res.status(404).json({ erreur: "Chambre introuvable" });
+      if (chambre.hotelId !== req.user.hotelId) {
+        return res.status(403).json({ erreur: "Acces refuse a cette chambre" });
+      }
+      res.json(await prisma.chambre.update({ where: { id }, data: req.body }));
+    } catch (error) {
+      next(error);
     }
-
-    const chambreExiste = await prisma.chambre.findUnique({ where: { id } });
-
-    if (!chambreExiste) {
-      return res.status(404).json({ erreur: "Chambre introuvable" });
-    }
-
-    const chambre = await prisma.chambre.update({
-      where: { id },
-      data: req.body,
-    });
-
-    res.json(chambre);
   },
 );
 
@@ -340,32 +326,151 @@ app.delete(
   "/chambres/:id",
   authRequis,
   exigeRole("hotelier"),
-  async (req, res) => {
+  async (req, res, next) => {
     const id = Number(req.params.id);
-
-    if (!Number.isInteger(id)) {
-      return res
-        .status(400)
-        .json({ erreur: "L'identifiant doit être un entier" });
+    try {
+      const chambre = await prisma.chambre.findUnique({ where: { id } });
+      if (!chambre)
+        return res.status(404).json({ erreur: "Chambre introuvable" });
+      if (chambre.hotelId !== req.user.hotelId) {
+        return res.status(403).json({ erreur: "Acces refuse a cette chambre" });
+      }
+      await prisma.chambre.delete({ where: { id } });
+      res.status(204).end();
+    } catch (error) {
+      next(error);
     }
-
-    const chambreExiste = await prisma.chambre.findUnique({ where: { id } });
-
-    if (!chambreExiste) {
-      return res.status(404).json({ erreur: "Chambre introuvable" });
-    }
-
-    await prisma.chambre.delete({ where: { id } });
-
-    res.status(204).end();
   },
 );
 
-export { app, authRequis, exigeRole };
+// ---------- Étape 7 : réservations ----------
 
-if (
-  process.argv[1] &&
-  path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)
-) {
-  app.listen(PORT, () => console.log(`API sur http://localhost:${PORT}`));
-}
+app.post(
+  "/reservations",
+  authRequis,
+  exigeRole("voyageur"),
+  validerCorps(SchemaCreationReservation),
+  async (req, res, next) => {
+    const { chambreId, dateArrivee, dateDepart, nbPersonnes, demandeSpeciale } =
+      req.body;
+
+    try {
+      const reservation = await prisma.reservation.create({
+        data: {
+          chambreId,
+          voyageurId: req.user.userId, // le voyageur vient du jeton, jamais du corps
+          dateArrivee: new Date(dateArrivee),
+          dateDepart: new Date(dateDepart),
+          nbPersonnes,
+          statut: "en_attente", // toujours fixé par le serveur à la création
+          demandeSpeciale: demandeSpeciale ?? "",
+        },
+      });
+      res.status(201).json(reservation);
+    } catch (error) {
+      next(error);
+    }
+  },
+);
+
+app.get(
+  "/reservations/mine",
+  authRequis,
+  exigeRole("voyageur"),
+  async (req, res, next) => {
+    try {
+      const reservations = await prisma.reservation.findMany({
+        where: { voyageurId: req.user.userId },
+        include: { chambre: true },
+      });
+      res.json(reservations);
+    } catch (error) {
+      next(error);
+    }
+  },
+);
+
+app.get(
+  "/reservations/received",
+  authRequis,
+  exigeRole("hotelier"),
+  async (req, res, next) => {
+    try {
+      const reservations = await prisma.reservation.findMany({
+        where: { chambre: { hotelId: req.user.hotelId } },
+        include: { chambre: true },
+      });
+      res.json(reservations);
+    } catch (error) {
+      next(error);
+    }
+  },
+);
+
+app.patch(
+  "/reservations/:id",
+  authRequis,
+  exigeRole("hotelier"),
+  validerCorps(SchemaChangementStatutReservation),
+  async (req, res, next) => {
+    const id = Number(req.params.id);
+    try {
+      const reservation = await prisma.reservation.findUnique({
+        where: { id },
+        include: { chambre: true },
+      });
+
+      if (!reservation) {
+        return res.status(404).json({ erreur: "Reservation introuvable" });
+      }
+      if (reservation.chambre.hotelId !== req.user.hotelId) {
+        return res
+          .status(403)
+          .json({ erreur: "Acces refuse a cette reservation" });
+      }
+      if (!transitionValide(reservation.statut, req.body.statut)) {
+        return res.status(409).json({
+          erreur: `passage de ${reservation.statut} a ${req.body.statut} interdit`,
+        });
+      }
+
+      const misAJour = await prisma.reservation.update({
+        where: { id },
+        data: { statut: req.body.statut },
+      });
+      res.json(misAJour);
+    } catch (error) {
+      next(error);
+    }
+  },
+);
+
+app.get("/comptes", async (req, res, next) => {
+  try {
+    res.json(await prisma.compte.findMany());
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.get("/comptes/:id", async (req, res, next) => {
+  const id = Number(req.params.id);
+  try {
+    const compte = await prisma.compte.findUnique({ where: { id } });
+    if (!compte) return res.status(404).json({ erreur: "compte introuvable" });
+    res.json(compte);
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.use((error, req, res, next) => {
+  console.error(error);
+  res.status(500).json({ erreur: "Erreur interne du serveur" });
+});
+
+const PORT = process.env.PORT ?? 3000;
+
+app.listen(PORT, () => {
+  console.log(`Serveur démarré sur http://localhost:${PORT}`);
+});
