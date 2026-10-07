@@ -12,7 +12,7 @@ import {
   SchemaModificationVoyageur,
   SchemaRechercheChambre,
   SchemaCreationReservation,
-  SchemaChangementStatutReservation,
+  SchemaConfirmationReservation,
 } from "./schemas.js";
 
 dotenv.config({ path: path.join(import.meta.dirname, "..", ".env") });
@@ -83,7 +83,7 @@ app.get("/health", (req, res) => res.json({ ok: true }));
 
 const TRANSITIONS_AUTORISEES = {
   en_attente: ["confirmee", "refusee"],
-  confirmee: [],
+  confirmee: ["annulée"],
   refusee: [],
   annulee: [],
 };
@@ -411,7 +411,7 @@ app.patch(
   "/reservations/:id",
   authRequis,
   exigeRole("hotelier"),
-  validerCorps(SchemaChangementStatutReservation),
+  validerCorps(SchemaConfirmationReservation),
   async (req, res, next) => {
     const id = Number(req.params.id);
     try {
@@ -439,6 +439,42 @@ app.patch(
         data: { statut: req.body.statut },
       });
       res.json(misAJour);
+    } catch (error) {
+      next(error);
+    }
+  },
+);
+
+app.delete(
+  "/reservations/:id",
+  authRequis,
+  exigeRole("voyageur"),
+  async (req, res, next) => {
+    const id = Number(req.params.id);
+    try {
+      const reservation = await prisma.reservation.findUnique({
+        where: { id },
+      });
+
+      if (!reservation) {
+        return res.status(404).json({ erreur: "Reservation introuvable" });
+      }
+      if (reservation.voyageurId !== req.user.userId) {
+        return res
+          .status(403)
+          .json({ erreur: "Acces refuse a cette reservation" });
+      }
+      if (!transitionValide(reservation.statut, "annulee")) {
+        return res.status(409).json({
+          erreur: `passage de ${reservation.statut} a annulee interdit`,
+        });
+      }
+
+      const annulee = await prisma.reservation.update({
+        where: { id },
+        data: { statut: "annulee" },
+      });
+      res.status(200).json(annulee);
     } catch (error) {
       next(error);
     }

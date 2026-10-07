@@ -76,8 +76,8 @@ export const SchemaCreationReservation = z
   })
   .strict();
 
-export const SchemaChangementStatutReservation = z
+export const SchemaConfirmationReservation = z
   .object({
-    statut: z.enum(["en_attente", "confirmee", "refusee", "annulee"]),
+    statut: z.enum(["confirmee", "refusee"]),
   })
   .strict();
