@@ -17,7 +17,7 @@ export const SchemaConnexionUtilisateur = z
 export const SchemaInscriptionUtilisateur = z
   .object({
     email: z.string().email("Email invalide"),
-    motDePasse: z.string().min(6, "Mot de passe trop court"),
+    motDePasse: z.string().min(8, "Mot de passe trop court"),
     nom: z.string().min(1, "Nom obligatoire"),
     prenom: z.string().min(1, "Prenom obligatoire"),
     telephone: telephoneValide.nullable().optional(),

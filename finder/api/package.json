@@ -9,9 +9,10 @@
   "scripts": {
     "dev": "nodemon src/server.js",
     "start": "node src/server.js",
-    "check": "node --check src/server.js && node --check prisma/seed.js",
-    "test": "node --test tests/*.test.js",
-    "db:seed": "prisma db seed"
+    "check": "node --check src/app.js && node --check src/server.js && node --check prisma/seed.js",
+    "test": "vitest run --no-file-parallelism",
+    "db:seed": "prisma db seed",
+    "test:coverage": "vitest run --coverage --no-file-parallelism"
   },
   "keywords": [],
   "author": "",
@@ -29,8 +30,11 @@
     "zod": "^4.6.5"
   },
   "devDependencies": {
+    "@vitest/coverage-v8": "^5.0.4",
     "nodemon": "^3.1.14",
-    "prisma": "^6.19.3"
+    "prisma": "^6.19.3",
+    "supertest": "^7.3.1",
+    "vitest": "^5.0.4"
   },
   "prisma": {
     "seed": "node prisma/seed.js"
